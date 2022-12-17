@@ -41,6 +41,19 @@ macro_rules! info {
     }};
 }
 
+fn _warning(message: String) {
+    println!(
+        "{}",
+        format!("[WARNING] -> {}", message).yellow().italic().bold()
+    )
+}
+
+macro_rules! warning {
+    ($($arg:tt)*) => {{
+        _warning(format!($($arg)*));
+    }};
+}
+
 fn _error(message: String) {
     println!(
         "{}",
@@ -172,7 +185,7 @@ fn find_connections(env: Enviroment) {
         };
 
         if pids.len() > 0 {
-            info!("found a connection!");
+            warning!("found a connection!");
             break;
         }
     }
