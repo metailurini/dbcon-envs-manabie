@@ -169,7 +169,7 @@ fn start_connections(env: Enviroment) {
     info!("establish connection...");
     match cmd(env.command_establish_connection.to_owned()) {
         Ok(_) => {}
-        Err(err) => _error(format!("establish connection failed: {}", err)),
+        Err(err) => error!("establish connection failed: {}", err),
     };
 }
 
@@ -179,7 +179,7 @@ fn find_connections(env: Enviroment) {
         let pids = match get_postgres_pids() {
             Ok(pids) => pids,
             Err(err) => {
-                _error(format!("get_postgresql_pids: {}", err));
+                error!("get_postgresql_pids: {}", err);
                 return;
             }
         };
