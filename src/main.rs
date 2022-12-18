@@ -8,8 +8,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::Duration;
 
-static GLOBAL_THREAD_COUNT: AtomicUsize = AtomicUsize::new(0);
-
 static CONFIG: &'static str = "
     stag.manabie   ;        ; cloud_sql_proxy -enable_iam_login -instances=staging-manabie-online:asia-southeast1:manabie-59fd=tcp:5432
     stag.jprep     ; stag_  ; cloud_sql_proxy -enable_iam_login -instances=staging-manabie-online:asia-southeast1:jprep-uat=tcp:5432
@@ -202,6 +200,25 @@ fn find_connections(env: Enviroment) {
     };
 }
 
+static GLOBAL_THREAD_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+fn detach<F>(func: F)
+where
+    F: FnOnce() + std::marker::Send + 'static,
+{
+    GLOBAL_THREAD_COUNT.fetch_add(1, Ordering::SeqCst);
+    thread::spawn(move || {
+        func();
+        GLOBAL_THREAD_COUNT.fetch_sub(1, Ordering::SeqCst);
+    });
+}
+
+fn wait() {
+    while GLOBAL_THREAD_COUNT.load(Ordering::SeqCst) != 0 {
+        thread::sleep(Duration::from_millis(1));
+    }
+}
+
 fn main() {
     match kill_postgresql_procs() {
         Ok(_) => {}
@@ -218,21 +235,15 @@ fn main() {
         Some(raw_val) => {
             let env = raw_val.as_ref().clone();
 
-            GLOBAL_THREAD_COUNT.fetch_add(1, Ordering::SeqCst);
-            thread::spawn(move || {
+            detach(move || {
                 start_connections(env);
-                GLOBAL_THREAD_COUNT.fetch_sub(1, Ordering::SeqCst);
             });
 
-            GLOBAL_THREAD_COUNT.fetch_add(1, Ordering::SeqCst);
-            thread::spawn(move || {
+            detach(move || {
                 find_connections(env);
-                GLOBAL_THREAD_COUNT.fetch_sub(1, Ordering::SeqCst);
             });
 
-            while GLOBAL_THREAD_COUNT.load(Ordering::SeqCst) != 0 {
-                thread::sleep(Duration::from_millis(1));
-            }
+            wait();
         }
         None => panic!("choose the wrong option"),
     }
