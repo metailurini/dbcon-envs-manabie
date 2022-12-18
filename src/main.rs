@@ -29,39 +29,49 @@ pub struct Enviroment {
     command_establish_connection: &'static str,
 }
 
-fn _info(message: String) {
-    println!("{}", format!("[INFO] -> {}", message).bold())
-}
-
 macro_rules! info {
     ($($arg:tt)*) => {{
-        _info(format!($($arg)*));
-    }};
-}
+        let t = match std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH) {
+                    Ok(expr) => expr.as_millis(),
+                    Err(_) => return,
+                };
 
-fn _warning(message: String) {
-    println!(
-        "{}",
-        format!("[WARNING] -> {}", message).yellow().italic().bold()
-    )
+        println!("{}", format!("[INFO-{:?}] -> {}", t, format!($($arg)*))
+            .bold()
+        )
+    }};
 }
 
 macro_rules! warning {
     ($($arg:tt)*) => {{
-        _warning(format!($($arg)*));
-    }};
-}
+        let t = match std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH) {
+                    Ok(expr) => expr.as_millis(),
+                    Err(_) => return,
+                };
 
-fn _error(message: String) {
-    println!(
-        "{}",
-        format!("[ERROR] -> {}", message).red().underline().bold()
-    )
+        println!("{}", format!("[WARN-{:?}] -> {}", t, format!($($arg)*))
+            .yellow()
+            .italic()
+            .bold()
+        )
+    }};
 }
 
 macro_rules! error {
     ($($arg:tt)*) => {{
-        _error(format!($($arg)*));
+        let t = match std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH) {
+                    Ok(expr) => expr.as_millis(),
+                    Err(_) => return,
+                };
+
+        println!("{}", format!("[ERRO-{:?}] -> {}", t, format!($($arg)*))
+            .red()
+            .underline()
+            .bold()
+        )
     }};
 }
 
