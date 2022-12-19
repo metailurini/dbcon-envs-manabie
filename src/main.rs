@@ -1,5 +1,6 @@
 use colored::Colorize;
 use std::collections::HashMap;
+use std::env;
 use std::error::Error;
 use std::panic;
 use std::process::{Command, Stdio};
@@ -8,11 +9,21 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::Duration;
 
+static HOST: &'static str = "localhost";
+static PORT: i32 = 5432;
+static YOUR_USERNAME: &'static str = "thanhdanh.nguyen@manabie.com";
+static SYSTEM_USERNAME: &'static str = "postgres";
+static SYSTEM_PASSWORD: &'static str = "example";
+static DEFAULT_DATABASE: &'static str = "bob";
+
 static CONFIG: &'static str = "
-    stag.manabie   ;        ; cloud_sql_proxy -enable_iam_login -instances=staging-manabie-online:asia-southeast1:manabie-59fd=tcp:5432
+    local          ;        ; kubectl -n emulator port-forward service/postgres-infras 5432:5432
+    stag.cmn       ;        ; cloud_sql_proxy -enable_iam_login -instances=staging-manabie-online:asia-southeast1:manabie-common-88e1ee71=tcp:5432
+    stag.lms       ;        ; cloud_sql_proxy -enable_iam_login -instances=staging-manabie-online:asia-southeast1:manabie-lms-de12e08e=tcp:5432
     stag.jprep     ; stag_  ; cloud_sql_proxy -enable_iam_login -instances=staging-manabie-online:asia-southeast1:jprep-uat=tcp:5432
 
-    uat.manabie    ; uat_   ; cloud_sql_proxy -enable_iam_login -instances=staging-manabie-online:asia-southeast1:manabie-59fd=tcp:5432
+    uat.cmn        ; uat_   ; cloud_sql_proxy -enable_iam_login -instances=staging-manabie-online:asia-southeast1:manabie-common-88e1ee71=tcp:5432
+    uat.lms        ; uat_   ; cloud_sql_proxy -enable_iam_login -instances=staging-manabie-online:asia-southeast1:manabie-lms-de12e08e=tcp:5432
     uat.jprep      ;        ; cloud_sql_proxy -enable_iam_login -instances=staging-manabie-online:asia-southeast1:jprep-uat=tcp:5432
 
     prod.aic       ; aic_   ; cloud_sql_proxy -enable_iam_login -instances=student-coach-e1e95:asia-northeast1:jp-partners-b04fbb69=tcp:5432
@@ -181,7 +192,7 @@ fn start_connections(env: Enviroment) {
     };
 }
 
-fn find_connections(env: Enviroment) {
+fn find_and_connect_psql(env: Enviroment, is_local: bool) {
     info!("find connections...");
     loop {
         let pids = match get_postgres_pids() {
@@ -193,21 +204,28 @@ fn find_connections(env: Enviroment) {
         };
 
         if pids.len() > 0 {
-            warning!("found a connection!");
-            break;
+            info!("found a connection!");
+            thread::sleep(Duration::from_secs(1));
+
+            let prefix_db = env.prefix_db;
+            let mut postgres_uri = format!(
+                "psql -h {HOST} -p {PORT} -U {YOUR_USERNAME} -d {prefix_db}{DEFAULT_DATABASE}"
+            );
+
+            if is_local {
+                postgres_uri =
+                    format!("psql postgres://{SYSTEM_USERNAME}:{SYSTEM_PASSWORD}@{HOST}:{PORT}/{DEFAULT_DATABASE}");
+            }
+
+            match proc(postgres_uri) {
+                Ok(_) => {}
+                Err(_) => {
+                    warning!("can not establish a connection");
+                    return;
+                }
+            };
         }
     }
-
-    let prefix_db = env.prefix_db;
-    match proc(format!(
-        "psql -h localhost -p 5432 -U thanhdanh.nguyen@manabie.com -d {prefix_db}bob"
-    )) {
-        Ok(_) => {}
-        Err(err) => {
-            error!("psql: {}", err);
-            return;
-        }
-    };
 }
 
 static GLOBAL_THREAD_COUNT: AtomicUsize = AtomicUsize::new(0);
@@ -239,7 +257,14 @@ fn main() {
     }
 
     let envs = get_envs();
-    let choosen_one = "uat.jprep";
+
+    let mut choosen_one = "stag.cmn";
+
+    let args: Vec<_> = env::args().collect();
+    if args.len() > 1 {
+        choosen_one = &args[1][..];
+    }
+    let is_local = choosen_one == "local";
 
     match envs.get(choosen_one) {
         Some(raw_val) => {
@@ -250,7 +275,7 @@ fn main() {
             });
 
             detach(move || {
-                find_connections(env);
+                find_and_connect_psql(env, is_local);
             });
 
             wait();
