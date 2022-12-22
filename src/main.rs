@@ -16,6 +16,8 @@ static SYSTEM_USERNAME: &'static str = "postgres";
 static SYSTEM_PASSWORD: &'static str = "example";
 static DEFAULT_DATABASE: &'static str = "bob";
 
+static LOCAL: &'static str = "local";
+
 static CONFIG: &'static str = "
     local          ;        ; kubectl -n emulator port-forward service/postgres-infras 5432:5432
     stag.cmn       ;        ; cloud_sql_proxy -enable_iam_login -instances=staging-manabie-online:asia-southeast1:manabie-common-88e1ee71=tcp:5432
@@ -218,7 +220,7 @@ fn find_and_connect_psql(env: Enviroment, is_local: bool) {
             if is_local {
                 postgres_uri =
                     format!("psql postgres://{SYSTEM_USERNAME}:{SYSTEM_PASSWORD}@{HOST}:{PORT}/{DEFAULT_DATABASE}");
-                env_name = "local";
+                env_name = LOCAL;
             }
 
             warning!(
@@ -267,13 +269,13 @@ fn main() {
 
     let envs = get_envs();
 
-    let mut choosen_one = "local";
+    let mut choosen_one = LOCAL;
 
     let args: Vec<_> = env::args().collect();
     if args.len() > 1 {
         choosen_one = &args[1][..];
     }
-    let is_local = choosen_one == "local";
+    let is_local = choosen_one == LOCAL;
 
     match envs.get(choosen_one) {
         Some(raw_val) => {
