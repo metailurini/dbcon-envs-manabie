@@ -36,6 +36,7 @@ static CONFIG: &'static str = "
 
 #[derive(Copy, Clone)]
 pub struct Enviroment {
+    env_name: &'static str,
     prefix_db: &'static str,
     command_establish_connection: &'static str,
 }
@@ -113,6 +114,7 @@ fn get_envs() -> HashMap<String, Box<Enviroment>> {
             envs.insert(
                 enviroment_name.to_owned(),
                 Box::new(Enviroment {
+                    env_name: enviroment_name,
                     prefix_db,
                     command_establish_connection,
                 }),
@@ -208,6 +210,7 @@ fn find_and_connect_psql(env: Enviroment, is_local: bool) {
             thread::sleep(Duration::from_secs(1));
 
             let prefix_db = env.prefix_db;
+            let mut env_name = env.env_name;
             let mut postgres_uri = format!(
                 "psql -h {HOST} -p {PORT} -U {YOUR_USERNAME} -d {prefix_db}{DEFAULT_DATABASE}"
             );
@@ -215,7 +218,13 @@ fn find_and_connect_psql(env: Enviroment, is_local: bool) {
             if is_local {
                 postgres_uri =
                     format!("psql postgres://{SYSTEM_USERNAME}:{SYSTEM_PASSWORD}@{HOST}:{PORT}/{DEFAULT_DATABASE}");
+                env_name = "local";
             }
+
+            warning!(
+                "{}",
+                format!("try to connect to {prefix_db}{DEFAULT_DATABASE} from {env_name}")
+            );
 
             match proc(postgres_uri) {
                 Ok(_) => {}
@@ -258,7 +267,7 @@ fn main() {
 
     let envs = get_envs();
 
-    let mut choosen_one = "stag.cmn";
+    let mut choosen_one = "local";
 
     let args: Vec<_> = env::args().collect();
     if args.len() > 1 {

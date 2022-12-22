@@ -1,0 +1,15 @@
+local          ;        ; kubectl -n emulator port-forward service/postgres-infras 5432:5432
+stag.cmn       ;        ; cloud_sql_proxy -enable_iam_login -instances=staging-manabie-online:asia-southeast1:manabie-common-88e1ee71=tcp:5432
+stag.lms       ;        ; cloud_sql_proxy -enable_iam_login -instances=staging-manabie-online:asia-southeast1:manabie-lms-de12e08e=tcp:5432
+stag.jprep     ; stag_  ; cloud_sql_proxy -enable_iam_login -instances=staging-manabie-online:asia-southeast1:jprep-uat=tcp:5432
+
+uat.cmn        ; uat_   ; cloud_sql_proxy -enable_iam_login -instances=staging-manabie-online:asia-southeast1:manabie-common-88e1ee71=tcp:5432
+uat.lms        ; uat_   ; cloud_sql_proxy -enable_iam_login -instances=staging-manabie-online:asia-southeast1:manabie-lms-de12e08e=tcp:5432
+uat.jprep      ;        ; cloud_sql_proxy -enable_iam_login -instances=staging-manabie-online:asia-southeast1:jprep-uat=tcp:5432
+
+prod.aic       ; aic_   ; cloud_sql_proxy -enable_iam_login -instances=student-coach-e1e95:asia-northeast1:jp-partners-b04fbb69=tcp:5432
+prod.ga        ; ga_    ; cloud_sql_proxy -enable_iam_login -instances=student-coach-e1e95:asia-northeast1:jp-partners-b04fbb69=tcp:5432
+prod.jprep     ;        ; cloud_sql_proxy -enable_iam_login -instances=live-manabie:asia-northeast1:jprep-6a98=tcp:5432
+prod.renseikai ;        ; cloud_sql_proxy -enable_iam_login -instances=production-renseikai:asia-northeast1:renseikai-83fc=tcp:5432
+prod.synersia  ;        ; cloud_sql_proxy -enable_iam_login -instances=synersia:asia-northeast1:synersia-228d=tcp:5432
+prod.tokyo     ; tokyo_ ; cloud_sql_proxy -enable_iam_login -instances=student-coach-e1e95:asia-northeast1:prod-tokyo=tcp:5432
