@@ -11,7 +11,6 @@ use std::time::Duration;
 
 static HOST: &'static str = "localhost";
 static PORT: i32 = 5432;
-static YOUR_USERNAME: &'static str = "thanhdanh.nguyen@manabie.com";
 static SYSTEM_USERNAME: &'static str = "postgres";
 static SYSTEM_PASSWORD: &'static str = "example";
 static DEFAULT_DATABASE: &'static str = "bob";
@@ -37,7 +36,7 @@ static CONFIG: &'static str = "
 ";
 
 #[derive(Copy, Clone)]
-pub struct Enviroment {
+pub struct Environment {
     env_name: &'static str,
     prefix_db: &'static str,
     command_establish_connection: &'static str,
@@ -89,7 +88,7 @@ macro_rules! error {
     }};
 }
 
-fn get_envs() -> HashMap<String, Box<Enviroment>> {
+fn get_envs() -> HashMap<String, Box<Environment>> {
     let mut envs = HashMap::new();
     _ = CONFIG
         .split("\n")
@@ -98,25 +97,25 @@ fn get_envs() -> HashMap<String, Box<Enviroment>> {
         .map(|line| {
             let line_details = line.split(";").map(|x| x.trim()).collect::<Vec<&str>>();
 
-            let enviroment_name = match line_details.get(0) {
+            let environment_name = match line_details.get(0) {
                 Some(en) => *en,
-                None => "",
+                _none => "",
             };
 
             let prefix_db = match line_details.get(1) {
                 Some(pdb) => *pdb,
-                None => "",
+                _none => "",
             };
 
             let command_establish_connection = match line_details.get(2) {
                 Some(cec) => *cec,
-                None => "",
+                _none => "",
             };
 
             envs.insert(
-                enviroment_name.to_owned(),
-                Box::new(Enviroment {
-                    env_name: enviroment_name,
+                environment_name.to_owned(),
+                Box::new(Environment {
+                    env_name: environment_name,
                     prefix_db,
                     command_establish_connection,
                 }),
@@ -142,6 +141,21 @@ fn proc(command: String) -> std::io::Result<std::process::Output> {
         .output()
 }
 
+fn get_gcloud_auth_email() -> Result<String, Box<dyn Error>> {
+    let output =
+        match cmd("gcloud auth list | grep -o '^\\*\\s*.*@.*' | awk '{printf $2}'".to_string()) {
+            Ok(output) => output.stdout,
+            Err(err) => return Err(err.into()),
+        };
+
+    let email = match str::from_utf8(&output) {
+        Ok(email) => String::from(email),
+        Err(err) => return Err(err.into()),
+    };
+
+    Ok(email)
+}
+
 fn get_postgres_pids() -> Result<Vec<String>, Box<dyn Error>> {
     let output = match cmd("lsof -i :5432".to_string()) {
         Ok(output) => output.stdout,
@@ -158,7 +172,7 @@ fn get_postgres_pids() -> Result<Vec<String>, Box<dyn Error>> {
         if index != 0 && line.len() != 0 {
             let pid = match line.split(" ").collect::<Vec<&str>>().get(1) {
                 Some(pid) => *pid,
-                None => return Err("can not get pid".into()),
+                _none => return Err("can not get pid".into()),
             };
             pids.push(pid.to_string());
         }
@@ -188,7 +202,7 @@ fn kill_postgresql_procs() -> Result<(), Box<dyn Error>> {
     kill_pids(pids)
 }
 
-fn start_connections(env: Enviroment) {
+fn start_connections(env: Environment) {
     info!("establish connection...");
     match cmd(env.command_establish_connection.to_owned()) {
         Ok(_) => {}
@@ -196,7 +210,7 @@ fn start_connections(env: Enviroment) {
     };
 }
 
-fn find_and_connect_psql(env: Enviroment, is_local: bool) {
+fn find_and_connect_psql(env: Environment, is_local: bool) {
     info!("find connections...");
     loop {
         let pids = match get_postgres_pids() {
@@ -211,11 +225,17 @@ fn find_and_connect_psql(env: Enviroment, is_local: bool) {
             info!("found a connection!");
             thread::sleep(Duration::from_secs(1));
 
+            let user_name = match get_gcloud_auth_email() {
+                Ok(email) => email,
+                Err(err) => {
+                    error!("get_gcloud_auth_email: {}", err);
+                    return;
+                }
+            };
             let prefix_db = env.prefix_db;
             let mut env_name = env.env_name;
-            let mut postgres_uri = format!(
-                "psql -h {HOST} -p {PORT} -U {YOUR_USERNAME} -d {prefix_db}{DEFAULT_DATABASE}"
-            );
+            let mut postgres_uri =
+                format!("psql -h {HOST} -p {PORT} -U {user_name} -d {prefix_db}{DEFAULT_DATABASE}");
 
             if is_local {
                 postgres_uri =
@@ -269,15 +289,15 @@ fn main() {
 
     let envs = get_envs();
 
-    let mut choosen_one = LOCAL;
+    let mut chosen_one = LOCAL;
 
     let args: Vec<_> = env::args().collect();
     if args.len() > 1 {
-        choosen_one = &args[1][..];
+        chosen_one = &args[1][..];
     }
-    let is_local = choosen_one == LOCAL;
+    let is_local = chosen_one == LOCAL;
 
-    match envs.get(choosen_one) {
+    match envs.get(chosen_one) {
         Some(raw_val) => {
             let env = raw_val.as_ref().clone();
 
