@@ -6,6 +6,7 @@ use std::fs;
 use std::panic;
 use std::process::{Command, Stdio};
 use std::str;
+use std::str::from_utf8;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::Duration;
@@ -88,8 +89,8 @@ fn get_envs(filename: &str) -> Result<HashMap<String, Box<Environment>>, Box<dyn
     for line in config_lines {
         let line_details = line
             .split(";")
-            .map(String::from)
-            .map(|x| String::from(x.trim()))
+            .into_iter()
+            .map(str::trim)
             .collect::<Vec<_>>();
 
         if line_details.len() < 3 {
@@ -134,8 +135,8 @@ fn get_gcloud_auth_email() -> Result<String, Box<dyn Error>> {
             Err(err) => return Err(err.into()),
         };
 
-    let email = match str::from_utf8(&output) {
-        Ok(email) => String::from(email),
+    let email = match String::from_utf8(output) {
+        Ok(email) => email,
         Err(err) => return Err(err.into()),
     };
 
