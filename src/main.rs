@@ -10,13 +10,13 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::Duration;
 
+static CONFIG_FILE: &'static str = "urls";
+static LOCAL: &'static str = "local";
 static HOST: &'static str = "localhost";
 static PORT: i32 = 5432;
 static SYSTEM_USERNAME: &'static str = "postgres";
 static SYSTEM_PASSWORD: &'static str = "example";
 static DEFAULT_DATABASE: &'static str = "bob";
-
-static LOCAL: &'static str = "local";
 
 #[derive(Clone)]
 pub struct Environment {
@@ -71,70 +71,46 @@ macro_rules! error {
     }};
 }
 
-fn _get_envs() -> HashMap<String, Box<Environment>> {
-    let config = fs::read_to_string("urls").expect("Should have been able to read the file");
-    let config_lines: Vec<String> = config.split('\n').map(String::from).collect();
-    let mut envs = HashMap::new();
-    let x = config_lines
+fn get_envs(filename: &str) -> Result<HashMap<String, Box<Environment>>, Box<dyn Error>> {
+    let config = match fs::read_to_string(filename) {
+        Ok(config) => config,
+        Err(err) => return Err(err.into()),
+    };
+
+    let config_lines = config
+        .split('\n')
         .into_iter()
-        .map(|line| String::from(line.trim()))
+        .map(str::trim)
         .filter(|line| line.len() != 0)
         .collect::<Vec<_>>();
 
-    for line in x {
+    let mut envs = HashMap::new();
+    for line in config_lines {
         let line_details = line
             .split(";")
             .map(String::from)
             .map(|x| String::from(x.trim()))
             .collect::<Vec<_>>();
 
-        // check error for len < 3
+        if line_details.len() < 3 {
+            return Err("config file wrong format".into());
+        }
 
-        let environment_name = line_details[0].to_owned();
-
+        let env_name = line_details[0].to_owned();
         let prefix_db = line_details[1].to_owned();
-
         let command_establish_connection = line_details[2].to_owned();
 
         envs.insert(
-            environment_name.to_owned(),
+            env_name.to_owned(),
             Box::new(Environment {
-                env_name: environment_name,
+                env_name,
                 prefix_db,
                 command_establish_connection,
             }),
         );
     }
 
-    // .map(|line| {
-    //     let line_details = line.split(";").map(|x| x.trim()).collect::<Vec<&str>>();
-    //     let environment_name = match line_details.get(0) {
-    //         Some(en) => *en,
-    //         None => "",
-    //     };
-    //     let prefix_db = match line_details.get(1) {
-    //         Some(pdb) => *pdb,
-    //         None => "",
-    //     };
-
-    //     let command_establish_connection = match line_details.get(2) {
-    //         Some(cec) => *cec,
-    //         None => "",
-    //     };
-
-    //     envs.insert(
-    //         environment_name.to_owned(),
-    //         Box::new(Environment {
-    //             env_name: environment_name,
-    //             prefix_db,
-    //             command_establish_connection,
-    //         }),
-    //     );
-    //     line
-    // })
-    // .collect::<Vec<_>>();
-
-    envs
+    Ok(envs)
 }
 
 fn cmd(command: String) -> std::io::Result<std::process::Output> {
@@ -297,7 +273,13 @@ fn main() {
         }
     }
 
-    let envs = _get_envs();
+    let envs = match get_envs(CONFIG_FILE) {
+        Ok(envs) => envs,
+        Err(err) => {
+            error!("get_envs: {}", err);
+            return;
+        }
+    };
 
     let mut chosen_one = LOCAL;
 
