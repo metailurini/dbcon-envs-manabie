@@ -2,6 +2,7 @@ use colored::Colorize;
 use std::collections::HashMap;
 use std::env;
 use std::error::Error;
+use std::fs;
 use std::panic;
 use std::process::{Command, Stdio};
 use std::str;
@@ -17,29 +18,11 @@ static DEFAULT_DATABASE: &'static str = "bob";
 
 static LOCAL: &'static str = "local";
 
-static CONFIG: &'static str = "
-    local          ;        ; kubectl -n emulator port-forward service/postgres-infras 5432:5432
-    stag.cmn       ;        ; cloud_sql_proxy -enable_iam_login -instances=staging-manabie-online:asia-southeast1:manabie-common-88e1ee71=tcp:5432
-    stag.lms       ;        ; cloud_sql_proxy -enable_iam_login -instances=staging-manabie-online:asia-southeast1:manabie-lms-de12e08e=tcp:5432
-    stag.jprep     ; stag_  ; cloud_sql_proxy -enable_iam_login -instances=staging-manabie-online:asia-southeast1:jprep-uat=tcp:5432
-
-    uat.cmn        ; uat_   ; cloud_sql_proxy -enable_iam_login -instances=staging-manabie-online:asia-southeast1:manabie-common-88e1ee71=tcp:5432
-    uat.lms        ; uat_   ; cloud_sql_proxy -enable_iam_login -instances=staging-manabie-online:asia-southeast1:manabie-lms-de12e08e=tcp:5432
-    uat.jprep      ;        ; cloud_sql_proxy -enable_iam_login -instances=staging-manabie-online:asia-southeast1:jprep-uat=tcp:5432
-
-    prod.aic       ; aic_   ; cloud_sql_proxy -enable_iam_login -instances=student-coach-e1e95:asia-northeast1:jp-partners-b04fbb69=tcp:5432
-    prod.ga        ; ga_    ; cloud_sql_proxy -enable_iam_login -instances=student-coach-e1e95:asia-northeast1:jp-partners-b04fbb69=tcp:5432
-    prod.jprep     ;        ; cloud_sql_proxy -enable_iam_login -instances=live-manabie:asia-northeast1:jprep-6a98=tcp:5432
-    prod.renseikai ;        ; cloud_sql_proxy -enable_iam_login -instances=production-renseikai:asia-northeast1:renseikai-83fc=tcp:5432
-    prod.synersia  ;        ; cloud_sql_proxy -enable_iam_login -instances=synersia:asia-northeast1:synersia-228d=tcp:5432
-    prod.tokyo     ; tokyo_ ; cloud_sql_proxy -enable_iam_login -instances=student-coach-e1e95:asia-northeast1:prod-tokyo=tcp:5432
-";
-
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 pub struct Environment {
-    env_name: &'static str,
-    prefix_db: &'static str,
-    command_establish_connection: &'static str,
+    env_name: String,
+    prefix_db: String,
+    command_establish_connection: String,
 }
 
 macro_rules! info {
@@ -88,42 +71,69 @@ macro_rules! error {
     }};
 }
 
-fn get_envs() -> HashMap<String, Box<Environment>> {
+fn _get_envs() -> HashMap<String, Box<Environment>> {
+    let config = fs::read_to_string("urls").expect("Should have been able to read the file");
+    let config_lines: Vec<String> = config.split('\n').map(String::from).collect();
     let mut envs = HashMap::new();
-    _ = CONFIG
-        .split("\n")
-        .map(|line| line.trim())
+    let x = config_lines
+        .into_iter()
+        .map(|line| String::from(line.trim()))
         .filter(|line| line.len() != 0)
-        .map(|line| {
-            let line_details = line.split(";").map(|x| x.trim()).collect::<Vec<&str>>();
+        .collect::<Vec<_>>();
 
-            let environment_name = match line_details.get(0) {
-                Some(en) => *en,
-                _none => "",
-            };
+    for line in x {
+        let line_details = line
+            .split(";")
+            .map(String::from)
+            .map(|x| String::from(x.trim()))
+            .collect::<Vec<_>>();
 
-            let prefix_db = match line_details.get(1) {
-                Some(pdb) => *pdb,
-                _none => "",
-            };
+        // check error for len < 3
 
-            let command_establish_connection = match line_details.get(2) {
-                Some(cec) => *cec,
-                _none => "",
-            };
+        let environment_name = line_details[0].to_owned();
 
-            envs.insert(
-                environment_name.to_owned(),
-                Box::new(Environment {
-                    env_name: environment_name,
-                    prefix_db,
-                    command_establish_connection,
-                }),
-            );
+        let prefix_db = line_details[1].to_owned();
 
-            line
-        })
-        .collect::<Vec<&str>>();
+        let command_establish_connection = line_details[2].to_owned();
+
+        envs.insert(
+            environment_name.to_owned(),
+            Box::new(Environment {
+                env_name: environment_name,
+                prefix_db,
+                command_establish_connection,
+            }),
+        );
+    }
+
+    // .map(|line| {
+    //     let line_details = line.split(";").map(|x| x.trim()).collect::<Vec<&str>>();
+    //     let environment_name = match line_details.get(0) {
+    //         Some(en) => *en,
+    //         None => "",
+    //     };
+    //     let prefix_db = match line_details.get(1) {
+    //         Some(pdb) => *pdb,
+    //         None => "",
+    //     };
+
+    //     let command_establish_connection = match line_details.get(2) {
+    //         Some(cec) => *cec,
+    //         None => "",
+    //     };
+
+    //     envs.insert(
+    //         environment_name.to_owned(),
+    //         Box::new(Environment {
+    //             env_name: environment_name,
+    //             prefix_db,
+    //             command_establish_connection,
+    //         }),
+    //     );
+    //     line
+    // })
+    // .collect::<Vec<_>>();
+
     envs
 }
 
@@ -172,7 +182,7 @@ fn get_postgres_pids() -> Result<Vec<String>, Box<dyn Error>> {
         if index != 0 && line.len() != 0 {
             let pid = match line.split(" ").collect::<Vec<&str>>().get(1) {
                 Some(pid) => *pid,
-                _none => return Err("can not get pid".into()),
+                None => return Err("can not get pid".into()),
             };
             pids.push(pid.to_string());
         }
@@ -232,15 +242,15 @@ fn find_and_connect_psql(env: Environment, is_local: bool) {
                     return;
                 }
             };
-            let prefix_db = env.prefix_db;
-            let mut env_name = env.env_name;
+            let prefix_db = env.prefix_db.to_owned();
+            let mut env_name = env.env_name.to_owned();
             let mut postgres_uri =
                 format!("psql -h {HOST} -p {PORT} -U {user_name} -d {prefix_db}{DEFAULT_DATABASE}");
 
             if is_local {
                 postgres_uri =
                     format!("psql postgres://{SYSTEM_USERNAME}:{SYSTEM_PASSWORD}@{HOST}:{PORT}/{DEFAULT_DATABASE}");
-                env_name = LOCAL;
+                env_name = LOCAL.to_owned();
             }
 
             warning!(
@@ -287,7 +297,7 @@ fn main() {
         }
     }
 
-    let envs = get_envs();
+    let envs = _get_envs();
 
     let mut chosen_one = LOCAL;
 
@@ -297,16 +307,16 @@ fn main() {
     }
     let is_local = chosen_one == LOCAL;
 
-    match envs.get(chosen_one) {
+    match envs.clone().get(chosen_one) {
         Some(raw_val) => {
-            let env = raw_val.as_ref().clone();
-
+            let start_connection_env = raw_val.as_ref().clone();
             detach(move || {
-                start_connections(env);
+                start_connections(start_connection_env);
             });
 
+            let find_and_connect_psql_env = raw_val.as_ref().clone();
             detach(move || {
-                find_and_connect_psql(env, is_local);
+                find_and_connect_psql(find_and_connect_psql_env, is_local);
             });
 
             wait();
