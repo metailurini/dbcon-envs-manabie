@@ -6,12 +6,11 @@ use std::fs;
 use std::panic;
 use std::process::{Command, Stdio};
 use std::str;
-use std::str::from_utf8;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::Duration;
 
-static CONFIG_FILE: &'static str = "urls";
+static CONFIG_FILE: &'static str = "/home/shane/workspace/metailurini/dbcon-envs-manabie/urls";
 static LOCAL: &'static str = "local";
 static HOST: &'static str = "localhost";
 static PORT: i32 = 5432;
@@ -189,7 +188,7 @@ fn kill_postgresql_procs() -> Result<(), Box<dyn Error>> {
     kill_pids(pids)
 }
 
-fn start_connections(env: Environment) {
+fn start_connections(env: Box<Environment>) {
     info!("establish connection...");
     match cmd(env.command_establish_connection.to_owned()) {
         Ok(_) => {}
@@ -197,7 +196,7 @@ fn start_connections(env: Environment) {
     };
 }
 
-fn find_and_connect_psql(env: Environment, is_local: bool) {
+fn find_and_connect_psql(env: Box<Environment>, is_local: bool) {
     info!("find connections...");
     loop {
         let pids = match get_postgres_pids() {
@@ -230,6 +229,7 @@ fn find_and_connect_psql(env: Environment, is_local: bool) {
                 env_name = LOCAL.to_owned();
             }
 
+            info!("connect by command: {}", postgres_uri);
             warning!(
                 "{}",
                 format!("try to connect to {prefix_db}{DEFAULT_DATABASE} from {env_name}")
@@ -250,7 +250,7 @@ static GLOBAL_THREAD_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 fn detach<F>(func: F)
 where
-    F: FnOnce() + std::marker::Send + 'static,
+    F: FnOnce() + Send + 'static,
 {
     GLOBAL_THREAD_COUNT.fetch_add(1, Ordering::SeqCst);
     thread::spawn(move || {
@@ -283,21 +283,20 @@ fn main() {
     };
 
     let mut chosen_one = LOCAL;
-
     let args: Vec<_> = env::args().collect();
     if args.len() > 1 {
         chosen_one = &args[1][..];
     }
-    let is_local = chosen_one == LOCAL;
 
-    match envs.clone().get(chosen_one) {
+    let is_local = chosen_one == LOCAL;
+    match envs.get(chosen_one) {
         Some(raw_val) => {
-            let start_connection_env = raw_val.as_ref().clone();
+            let start_connection_env = raw_val.clone();
             detach(move || {
                 start_connections(start_connection_env);
             });
 
-            let find_and_connect_psql_env = raw_val.as_ref().clone();
+            let find_and_connect_psql_env = raw_val.clone();
             detach(move || {
                 find_and_connect_psql(find_and_connect_psql_env, is_local);
             });
