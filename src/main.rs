@@ -1,16 +1,18 @@
 use colored::Colorize;
+use rust_embed::RustEmbed;
 use std::collections::HashMap;
-use std::env;
 use std::error::Error;
-use std::fs;
-use std::panic;
 use std::process::{Command, Stdio};
-use std::str;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::thread;
 use std::time::Duration;
+use std::{env, panic, str, thread};
 
-static CONFIG_FILE: &'static str = "/home/shane/workspace/metailurini/dbcon-envs-manabie/urls";
+#[derive(RustEmbed)]
+#[folder = "."]
+#[include = "urls"]
+struct Asset;
+
+static CONFIG_FILE: &'static str = "urls";
 static LOCAL: &'static str = "local";
 static HOST: &'static str = "localhost";
 static PORT: i32 = 5432;
@@ -72,7 +74,12 @@ macro_rules! error {
 }
 
 fn get_envs(filename: &str) -> Result<HashMap<String, Box<Environment>>, Box<dyn Error>> {
-    let config = match fs::read_to_string(filename) {
+    let raw_config = match Asset::get(filename) {
+        Some(config) => config.data,
+        None => return Err("config file wrong format".into()),
+    };
+
+    let config = match str::from_utf8(raw_config.as_ref()) {
         Ok(config) => config,
         Err(err) => return Err(err.into()),
     };
@@ -212,7 +219,7 @@ fn find_and_connect_psql(env: Box<Environment>, is_local: bool) {
             thread::sleep(Duration::from_secs(1));
 
             let user_name = match get_gcloud_auth_email() {
-                Ok(email) => email,
+                Ok(email) => email.replace("@", "%40"),
                 Err(err) => {
                     error!("get_gcloud_auth_email: {}", err);
                     return;
@@ -221,7 +228,7 @@ fn find_and_connect_psql(env: Box<Environment>, is_local: bool) {
             let prefix_db = env.prefix_db.to_owned();
             let mut env_name = env.env_name.to_owned();
             let mut postgres_uri =
-                format!("psql -h {HOST} -p {PORT} -U {user_name} -d {prefix_db}{DEFAULT_DATABASE}");
+                format!("psql \"postgres://{user_name}:password@{HOST}:{PORT}/{prefix_db}{DEFAULT_DATABASE}\"");
 
             if is_local {
                 postgres_uri =
