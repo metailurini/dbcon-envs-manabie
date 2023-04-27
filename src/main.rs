@@ -1,3 +1,4 @@
+use clap::Parser;
 use colored::Colorize;
 use rust_embed::RustEmbed;
 use std::collections::HashMap;
@@ -5,7 +6,7 @@ use std::error::Error;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
-use std::{env, panic, str, thread};
+use std::{str, thread};
 
 #[derive(RustEmbed)]
 #[folder = "."]
@@ -272,15 +273,39 @@ fn wait() {
     }
 }
 
-fn main() {
-    match kill_postgresql_procs() {
-        Ok(_) => {}
-        Err(err) => {
-            error!("kill_postgresql_procs: {}", err);
-            return;
-        }
+fn show_list_envs(envs: Vec<(String, Box<Environment>)>) {
+    let mut envs_by_group_name = HashMap::<String, Vec<(String, Box<Environment>)>>::new();
+
+    for env in envs {
+        let group_name = env.0.split('.').next().unwrap().to_string();
+        let envs_group = envs_by_group_name.entry(group_name).or_insert(Vec::new());
+        envs_group.push(env);
     }
 
+    let mut sorted_groups = envs_by_group_name.keys().collect::<Vec<_>>();
+    sorted_groups.sort();
+
+    for group_name in sorted_groups {
+        let group_envs = envs_by_group_name.get(group_name).unwrap();
+        println!("---{}---", group_name.to_uppercase());
+        for group_env in group_envs {
+            println!("  {}", group_env.0);
+        }
+        println!();
+    }
+}
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    #[arg(short, long, default_value_t = String::from(LOCAL))]
+    env: String,
+
+    #[arg(short, long, default_value_t = false)]
+    list_env: bool,
+}
+
+fn main() {
     let envs = match get_envs(CONFIG_FILE) {
         Ok(envs) => envs,
         Err(err) => {
@@ -289,13 +314,23 @@ fn main() {
         }
     };
 
-    let mut chosen_one = LOCAL;
-    let args: Vec<_> = env::args().collect();
-    if args.len() > 1 {
-        chosen_one = &args[1][..];
+    let args = Args::parse();
+    if args.list_env {
+        show_list_envs(envs.clone().into_iter().collect::<Vec<_>>());
+        return;
     }
 
+    match kill_postgresql_procs() {
+        Ok(_) => {}
+        Err(err) => {
+            error!("kill_postgresql_procs: {}", err);
+            return;
+        }
+    }
+
+    let chosen_one = args.env.as_str();
     let is_local = chosen_one == LOCAL;
+
     match envs.get(chosen_one) {
         Some(raw_val) => {
             let start_connection_env = raw_val.clone();
@@ -310,6 +345,6 @@ fn main() {
 
             wait();
         }
-        None => panic!("choose the wrong option"),
+        None => error!("choose the wrong option"),
     }
 }
