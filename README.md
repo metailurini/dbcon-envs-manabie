@@ -10,8 +10,8 @@ To install DBConnect from source, follow these steps:
 
 ## Usage
 To use DBConnect, run the following commands:
-- dbconnect -l to list all the available environments you can connect to
-- dbconnect -e <env> to connect to a specific environment using one of the listed options
+- `dbconnect -l` to list all the available environments you can connect to
+- `dbconnect -e <env>` to connect to a specific environment using one of the listed options
 
 ## Contribution
 If you want to contribute to this project, please follow these guidelines:
