@@ -19,12 +19,12 @@ static HOST: &'static str = "localhost";
 static PORT: i32 = 5432;
 static SYSTEM_USERNAME: &'static str = "postgres";
 static SYSTEM_PASSWORD: &'static str = "example";
-static DEFAULT_DATABASE: &'static str = "bob";
 
 #[derive(Clone)]
 pub struct Environment {
     env_name: String,
     prefix_db: String,
+    default_db: String,
     command_establish_connection: String,
 }
 
@@ -106,13 +106,15 @@ fn get_envs(filename: &str) -> Result<HashMap<String, Box<Environment>>, Box<dyn
 
         let env_name = line_details[0].to_owned();
         let prefix_db = line_details[1].to_owned();
-        let command_establish_connection = line_details[2].to_owned();
+        let default_db = line_details[2].to_owned();
+        let command_establish_connection = line_details[3].to_owned();
 
         envs.insert(
             env_name.to_owned(),
             Box::new(Environment {
                 env_name,
                 prefix_db,
+                default_db,
                 command_establish_connection,
             }),
         );
@@ -227,20 +229,22 @@ fn find_and_connect_psql(env: Box<Environment>, is_local: bool) {
                 }
             };
             let prefix_db = env.prefix_db.to_owned();
+            let default_db = env.default_db.to_owned();
             let mut env_name = env.env_name.to_owned();
-            let mut postgres_uri =
-                format!("psql \"postgres://{user_name}:password@{HOST}:{PORT}/{prefix_db}{DEFAULT_DATABASE}\"");
+            let mut postgres_uri = format!(
+                "psql \"postgres://{user_name}:password@{HOST}:{PORT}/{prefix_db}{default_db}\""
+            );
 
             if is_local {
                 postgres_uri =
-                    format!("psql postgres://{SYSTEM_USERNAME}:{SYSTEM_PASSWORD}@{HOST}:{PORT}/{DEFAULT_DATABASE}");
+                    format!("psql postgres://{SYSTEM_USERNAME}:{SYSTEM_PASSWORD}@{HOST}:{PORT}/{default_db}");
                 env_name = LOCAL.to_owned();
             }
 
             info!("connect by command: {}", postgres_uri);
             warning!(
                 "{}",
-                format!("try to connect to {prefix_db}{DEFAULT_DATABASE} from {env_name}")
+                format!("try to connect to {prefix_db}{default_db} from {env_name}")
             );
 
             match proc(postgres_uri) {
