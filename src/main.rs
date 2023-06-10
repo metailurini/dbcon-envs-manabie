@@ -16,7 +16,6 @@ struct Asset;
 static CONFIG_FILE: &'static str = "urls";
 static LOCAL: &'static str = "local";
 static HOST: &'static str = "localhost";
-static PORT: i32 = 5432;
 static SYSTEM_USERNAME: &'static str = "postgres";
 static SYSTEM_PASSWORD: &'static str = "example";
 
@@ -25,8 +24,16 @@ pub struct Environment {
     env_name: String,
     prefix_db: String,
     default_db: String,
+    default_port: u16,
     command_establish_connection: String,
 }
+
+// index of columns in config file
+const NAME_INDEX: usize = 0;
+const PREFIX_DB_INDEX: usize = 1;
+const DEFAULT_DB_INDEX: usize = 2;
+const DEFAULT_PORT_INDEX: usize = 3;
+const COMMAND_ESTABLISH_CONNECTION_INDEX: usize = 4;
 
 macro_rules! info {
     ($($arg:tt)*) => {{
@@ -104,10 +111,15 @@ fn get_envs(filename: &str) -> Result<HashMap<String, Box<Environment>>, Box<dyn
             return Err("config file wrong format".into());
         }
 
-        let env_name = line_details[0].to_owned();
-        let prefix_db = line_details[1].to_owned();
-        let default_db = line_details[2].to_owned();
-        let command_establish_connection = line_details[3].to_owned();
+        let env_name = line_details[NAME_INDEX].to_owned();
+        let prefix_db = line_details[PREFIX_DB_INDEX].to_owned();
+        let default_db = line_details[DEFAULT_DB_INDEX].to_owned();
+        let default_port = match line_details[DEFAULT_PORT_INDEX].to_owned().parse::<u16>() {
+            Ok(default_port) => default_port,
+            Err(err) => return Err(err.into()),
+        };
+        let command_establish_connection =
+            line_details[COMMAND_ESTABLISH_CONNECTION_INDEX].to_owned();
 
         envs.insert(
             env_name.to_owned(),
@@ -115,6 +127,7 @@ fn get_envs(filename: &str) -> Result<HashMap<String, Box<Environment>>, Box<dyn
                 env_name,
                 prefix_db,
                 default_db,
+                default_port,
                 command_establish_connection,
             }),
         );
@@ -152,8 +165,8 @@ fn get_gcloud_auth_email() -> Result<String, Box<dyn Error>> {
     Ok(email)
 }
 
-fn get_postgres_pids() -> Result<Vec<String>, Box<dyn Error>> {
-    let output = match cmd("lsof -i :5432".to_string()) {
+fn get_postgres_pids(port: u16) -> Result<Vec<String>, Box<dyn Error>> {
+    let output = match cmd(format!("lsof -i :{}", port).to_string()) {
         Ok(output) => output.stdout,
         Err(err) => return Err(err.into()),
     };
@@ -193,8 +206,8 @@ fn kill_pids(pids: Vec<String>) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn kill_postgresql_procs() -> Result<(), Box<dyn Error>> {
-    let pids = get_postgres_pids()?;
+fn kill_postgresql_procs(port: u16) -> Result<(), Box<dyn Error>> {
+    let pids = get_postgres_pids(port)?;
     kill_pids(pids)
 }
 
@@ -209,7 +222,7 @@ fn start_connections(env: Box<Environment>) {
 fn find_and_connect_psql(env: Box<Environment>, is_local: bool) {
     info!("find connections...");
     loop {
-        let pids = match get_postgres_pids() {
+        let pids = match get_postgres_pids(env.default_port) {
             Ok(pids) => pids,
             Err(err) => {
                 error!("get_postgresql_pids: {}", err);
@@ -230,14 +243,15 @@ fn find_and_connect_psql(env: Box<Environment>, is_local: bool) {
             };
             let prefix_db = env.prefix_db.to_owned();
             let default_db = env.default_db.to_owned();
+            let default_port = env.default_port.to_owned();
             let mut env_name = env.env_name.to_owned();
             let mut postgres_uri = format!(
-                "psql \"postgres://{user_name}:password@{HOST}:{PORT}/{prefix_db}{default_db}\""
+                "psql \"postgres://{user_name}:password@{HOST}:{default_port}/{prefix_db}{default_db}\""
             );
 
             if is_local {
                 postgres_uri =
-                    format!("psql postgres://{SYSTEM_USERNAME}:{SYSTEM_PASSWORD}@{HOST}:{PORT}/{default_db}");
+                    format!("psql postgres://{SYSTEM_USERNAME}:{SYSTEM_PASSWORD}@{HOST}:{default_port}/{default_db}");
                 env_name = LOCAL.to_owned();
             }
 
@@ -324,19 +338,19 @@ fn main() {
         return;
     }
 
-    match kill_postgresql_procs() {
-        Ok(_) => {}
-        Err(err) => {
-            error!("kill_postgresql_procs: {}", err);
-            return;
-        }
-    }
-
     let chosen_one = args.env.as_str();
     let is_local = chosen_one == LOCAL;
 
     match envs.get(chosen_one) {
         Some(raw_val) => {
+            match kill_postgresql_procs(raw_val.default_port) {
+                Ok(_) => {}
+                Err(err) => {
+                    error!("kill_postgresql_procs: {}", err);
+                    return;
+                }
+            }
+
             let start_connection_env = raw_val.clone();
             detach(move || {
                 start_connections(start_connection_env);
