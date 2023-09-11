@@ -1,13 +1,13 @@
 [package]
 name = "dbconnect"
-version = "0.3.1"
+version = "0.4.1"
 edition = "2021"
 
 [dependencies]
 clap = { version = "4.2.4", features = ["derive"] }
 colored = "2"
 env_logger = "0.10.0"
-futures = { version = "0.3.*"}
+futures = { version = "0.3.*" }
 log = "0.4.*"
-rust-embed={ version = "6.6.0", features = ["include-exclude"] }
-tokio = {version = "1.28.0", features = ["full"] }
+rust-embed = { version = "8.0.0", features = ["include-exclude"] }
+tokio = { version = "1.28.0", features = ["full"] }
